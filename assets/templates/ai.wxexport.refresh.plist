@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.wxexport.refresh</string>
+
+    <!-- 通过 Terminal 中继执行：复用终端已获得的容器访问权限，避免反复弹授权框 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-g</string>
+        <string>-a</string>
+        <string>Terminal</string>
+        <string>__HOME__/.wxexport/relay.command</string>
+    </array>
+
+    <!-- 每 4 小时（14400 秒）刷新一次 -->
+    <key>StartInterval</key>
+    <integer>14400</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/wx-export/refresh.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/wx-export/refresh.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

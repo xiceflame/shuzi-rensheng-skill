@@ -1,0 +1,128 @@
+{
+  "collapse-filter": false,
+  "search": "",
+  "showTags": false,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "tag:#业务线A",
+      "color": {
+        "a": 1,
+        "rgb": 16347926
+      }
+    },
+    {
+      "query": "tag:#业务线B",
+      "color": {
+        "a": 1,
+        "rgb": 15357964
+      }
+    },
+    {
+      "query": "tag:#业务线C",
+      "color": {
+        "a": 1,
+        "rgb": 16096779
+      }
+    },
+    {
+      "query": "tag:#业务线D",
+      "color": {
+        "a": 1,
+        "rgb": 11817737
+      }
+    },
+    {
+      "query": "file:公司主体 OR file:支撑页",
+      "color": {
+        "a": 1,
+        "rgb": 16628340
+      }
+    },
+    {
+      "query": "file:主业页 OR file:主业子页",
+      "color": {
+        "a": 1,
+        "rgb": 9133302
+      }
+    },
+    {
+      "query": "file:爱好页",
+      "color": {
+        "a": 1,
+        "rgb": 2278750
+      }
+    },
+    {
+      "query": "file:个人",
+      "color": {
+        "a": 1,
+        "rgb": 15485081
+      }
+    },
+    {
+      "query": "path:wiki/people",
+      "color": {
+        "a": 1,
+        "rgb": 440020
+      }
+    },
+    {
+      "query": "path:wiki/journal",
+      "color": {
+        "a": 1,
+        "rgb": 3900150
+      }
+    },
+    {
+      "query": "path:wiki/monthly OR path:wiki/quarterly",
+      "color": {
+        "a": 1,
+        "rgb": 9684477
+      }
+    },
+    {
+      "query": "path:wiki/finance",
+      "color": {
+        "a": 1,
+        "rgb": 15381256
+      }
+    },
+    {
+      "query": "path:wiki/tasks",
+      "color": {
+        "a": 1,
+        "rgb": 15680580
+      }
+    },
+    {
+      "query": "path:wiki/concepts OR path:wiki/entities OR path:wiki/sources OR path:wiki/ideas OR path:wiki/outputs",
+      "color": {
+        "a": 1,
+        "rgb": 1357990
+      }
+    },
+    {
+      "query": "path:wiki/index.md OR path:wiki/log.md OR path:wiki/系统说明.md",
+      "color": {
+        "a": 1,
+        "rgb": 9741240
+      }
+    }
+  ],
+  "collapse-display": true,
+  "showArrow": false,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": true,
+  "centerStrength": 0.518713248970312,
+  "repelStrength": 10,
+  "linkStrength": 1,
+  "linkDistance": 227,
+  "scale": 1,
+  "close": false
+}

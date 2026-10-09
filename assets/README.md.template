@@ -1,0 +1,96 @@
+# {{库名}} · 个人知识库
+
+> **一句话**：把**聊天、语音、图片、文件**自动变成一座**人和 AI 都能检索**的个人知识库。
+> 这不是给人手写的笔记库——它由 **OpenClaw 的 AI agents 自动整理**，你只管看和问。
+
+**三层角色**
+
+| 角色 | 机器 | 职责 |
+|---|---|---|
+| 🖥️ **采集端** | {{采集端，如 MacBook}} | 每 4 小时把数据导出（微信/语音/图片/文件） |
+| 🧠 **大脑** | {{大脑，如 macmini}} `{{库路径}}` | 接收同步 → agents 自动整理 → 提供检索 |
+| 👁️ **眼睛** | Obsidian | 浏览同一座库；Syncthing 准实时同步 |
+
+---
+
+## 一、整体运行方式
+
+```
+①采集  采集端每 4h：解密/导出 → 文字/语音/图片/文件/视频/财务
+             │  同步
+             ▼
+②同步  Syncthing 准实时（两台机 ⇄）
+             ▼
+③整理  大脑上的 OpenClaw agents（{{owner agent}} 等）：提炼进 wiki → 更新索引 → 向量化
+             ▼
+④消费  Obsidian 浏览 · 语义检索 · Discord 推送摘要
+```
+
+---
+
+## 二、双视图（核心）
+
+- **时间轴** —— `wiki/journal/`「我的每一天」，按天汇总所有会话；
+- **人物轴** —— `wiki/people/`，每人一条「时间线（事件 + 意义）」。
+- 两者用路径式内链点回 `raw/chatlogs/<会话>/<YYYY-MM>` **原始聊天**。
+
+---
+
+## 三、谁在整理
+
+整理工作由 **OpenClaw agents** 驱动，本库是它们的**长期记忆层**。使用的技能：**`shuzi-rensheng`**（维护规范）。
+
+| Agent | 方向 |
+|---|---|
+| **{{owner agent}}** | 本库 owner：摘要、归类、journal/people |
+| {{领域agent}} | {{方向}} |
+
+---
+
+## 四、Obsidian 设置
+
+- 库位置：{{大脑路径}} ⇄ {{采集端路径}}（Syncthing 同步，**不是 git**）。
+- 纯原生、零社区插件；`userIgnoreFilters: ["raw/"]`（`raw/` 在图谱/搜索里隐藏）。
+
+---
+
+## 五、检索
+
+```bash
+vaultq "<问题>"          # ★ 两阶段：召回 + reranker
+qkb query "<问题>"       # 混合检索
+qkb status               # 索引状态
+python3 ~/.config/qkb/qkb-lock.py ingest   # 改完 wiki 后重建（顺序不可颠倒）
+```
+页 frontmatter 必须含 `id` + `context` + `created`，否则不索引。
+
+---
+
+## 六、目录速览
+
+```
+{{库名}}/
+├── README.md      ← 本文件（工程总览）
+├── CLAUDE.md      ← "宪法"：工作流 + 约束 + 业务规则（agent 操作手册）
+├── raw/           ← 原始素材 + 历史聊天证据（**只读**，Obsidian 里隐藏）
+├── wiki/          ← **整理层**（agents 维护）
+│   ├── index.md · log.md · journal/ · people/ · projects/ · tasks/ · monthly/ · quarterly/ …
+└── templates/
+```
+
+---
+
+## 七、文档地图
+
+| 想了解 | 看哪 |
+|---|---|
+| 整体是什么样（本文件） | `README.md` |
+| agent 该怎么整理 | `CLAUDE.md` |
+| **现在有什么 / 改过什么** | `wiki/index.md` · `wiki/log.md` |
+
+---
+
+## 八、需要人工的事
+
+1. {{人工事项1，如 采集端软件升级后重新签名}}
+2. {{人工事项2，如 提供权威对账单}}

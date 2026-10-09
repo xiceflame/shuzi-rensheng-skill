@@ -1,0 +1,17 @@
+#!/bin/sh
+# 大作业走 4090：全量重建（--full）/ 大批量嵌入。
+# 日常增量不用它 —— embed-proxy 默认走本机（~2 分钟）；只有大活才需要 4090。
+#
+# 用法：
+#   qkb-bigjob embed --full     # 全量重嵌（换模型 / 重建）
+#   qkb-bigjob ingest           # 批量重建关键词索引
+#   qkb-bigjob embed            # 大批量增量
+#
+# 原理：临时创建 ~/.config/qkb/prefer-4090 标记 → embed-proxy 改用 4090；
+#       退出时自动删除（经 qkb-lock.py 串行化，防并发抢插）。
+set -e
+MARK="$HOME/.config/qkb/prefer-4090"
+touch "$MARK"
+trap 'rm -f "$MARK"' EXIT INT TERM
+echo "→ 大作业模式（4090）：qkb $*"
+/usr/bin/python3 "$HOME/.config/qkb/qkb-lock.py" "$@"

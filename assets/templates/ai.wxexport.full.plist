@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.wxexport.full</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__HOME__/.wxexport/full_refresh.sh</string>
+    </array>
+
+    <!-- 每周一次（604800 秒）全量历史导出 -->
+    <key>StartInterval</key>
+    <integer>604800</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/wx-export/full_refresh.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/wx-export/full_refresh.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

@@ -1,124 +1,131 @@
 #!/usr/bin/env python3
-"""vaultq — qkb 召回 + 本地 reranker 重排（bge-reranker-v2-m3，跑在 4090 上）。
+"""QKB recall + reranking, with path filtering BEFORE remote reranking/output.
 
-用两阶段检索修「答案散落、Top5 不准」的问题：
-  1) qkb query 取 N 个候选（BM25+向量+RRF）
-  2) 候选片段送 reranker（cross-encoder）重排，返回最相关的 K 个
-
-依赖：
-  - qkb CLI
-  - rerank 服务：GPU 机上 llama-server --reranking（组网见 references/network-setup.md）；
-    远端地址用 config.json network.gpu.rerank_url 或环境变量 RERANK_URL_REMOTE 配置
-（服务不可用时会自动回退为 qkb 原始排序，不报错中断。）
+This is a single-vault output boundary, NOT a tenant-aware QKB authorization
+system. Do not share the underlying QKB index with untrusted clients.
 """
+from __future__ import annotations
+
 import argparse
 import json
+import math
 import os
-import subprocess
+from pathlib import Path
 import sys
 import time
 import urllib.request
 
-QKB = os.environ.get("QKB_BIN", "/opt/homebrew/bin/qkb")
-# rerank 链：本机（launchd com.<user>.rerank-local，0.7s/30条）→ 远端 GPU（可选）→ 放弃（回退 qkb 排序）
-def _cfg(path):
+from shuzi_runtime import checked_run, command, get, load_config, vault_path
+
+
+def authorized_path(value, vault):
+    if not isinstance(value, str) or not value or "\x00" in value:
+        return False
+    path = Path(value).expanduser()
+    if ".." in path.parts:
+        return False
     try:
-        c = json.load(open(os.path.expanduser("~/.shuzi-rensheng/config.json")))
-        for k in path.split("."):
-            c = c[k]
-        return c if isinstance(c, str) else ""
-    except Exception:
-        return ""
-
-RERANK_URLS = [os.environ.get("RERANK_URL", "http://127.0.0.1:8082/rerank")]
-_REMOTE_RERANK = os.environ.get("RERANK_URL_REMOTE") or _cfg("network.gpu.rerank_url")
-if _REMOTE_RERANK:
-    RERANK_URLS.append(_REMOTE_RERANK)
-
-
-def qkb_search(query: str, n: int) -> list:
-    p = subprocess.run([QKB, "query", query, "--limit", str(n), "--json"],
-                       capture_output=True, text=True)
-    if p.returncode != 0:
-        sys.stderr.write((p.stderr or p.stdout)[-500:] + "\n")
-        sys.exit(1)
-    out = p.stdout
-    i = out.find("[")
-    return json.loads(out[i:]) if i >= 0 else []
+        relative = path.relative_to(vault) if path.is_absolute() else path
+        if not relative.parts or relative.parts[0] not in ("wiki", "raw"):
+            return False
+        current = vault
+        for part in relative.parts:
+            if part.startswith(".") or part.casefold() == "private" or ".sync-conflict-" in part:
+                return False
+            current = current / part
+            if current.is_symlink():
+                return False
+        return current.is_file() and current.suffix == ".md" and current.stat().st_nlink == 1
+    except (ValueError, OSError):
+        return False
 
 
-def rerank(query: str, docs: list) -> list:
-    body = json.dumps({"query": query, "documents": docs}).encode()
-    last = None
-    for url in RERANK_URLS:
+def filter_candidates(candidates, vault):
+    return [c for c in candidates if isinstance(c, dict) and authorized_path(c.get("file_path"), vault)]
+
+
+def qkb_search(query, count):
+    result = checked_run([command("qkb", "QKB_BIN"), "query", query, "--limit", str(count), "--json"], timeout=60)
+    start = result.stdout.find("[")
+    if start < 0:
+        raise ValueError("QKB returned no JSON result array")
+    data = json.loads(result.stdout[start:])
+    if not isinstance(data, list):
+        raise ValueError("QKB results must be an array")
+    return data
+
+
+def rerank(query, candidates, config):
+    urls = [os.environ.get("RERANK_URL", "http://127.0.0.1:8082/rerank")]
+    remote = os.environ.get("RERANK_URL_REMOTE") or get(config, "network.gpu.rerank_url", "")
+    if remote:
+        urls.append(remote)
+    body = json.dumps({"query": query, "documents": [c.get("matched_text") or c.get("title") or "" for c in candidates]}).encode()
+    timeout = float(get(config, "retrieval.rerank_timeout_seconds", 3))
+    if not 0 < timeout <= 30:
+        raise ValueError("rerank timeout must be between 0 and 30 seconds")
+    for url in urls:
         try:
-            req = urllib.request.Request(url, data=body,
-                                         headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=120) as r:
-                return json.load(r)["results"]
-        except Exception as e:  # noqa: BLE001
-            last = e
-    raise last if last else RuntimeError("no rerank url")
+            request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                results = json.load(response)["results"]
+            indices = [r["index"] for r in results]
+            if any(type(i) is not int for i in indices) or sorted(indices) != list(range(len(candidates))):
+                raise ValueError("Invalid or incomplete reranker indices")
+            if any(not math.isfinite(float(r["relevance_score"])) for r in results):
+                raise ValueError("Non-finite reranker score")
+            return [(float(r["relevance_score"]), candidates[r["index"]]) for r in sorted(results, key=lambda r: float(r["relevance_score"]), reverse=True)]
+        except Exception:
+            # Avoid logging queries, document text or endpoint credentials on failure.
+            continue
+    raise RuntimeError("All configured rerankers unavailable or returned invalid results")
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="qkb + reranker 两阶段检索")
-    ap.add_argument("query")
-    ap.add_argument("-k", type=int, default=5, help="最终返回条数")
-    ap.add_argument("-n", type=int, default=30, help="qkb 候选条数")
-    ap.add_argument("--files", action="store_true", help="只输出文件路径")
-    ap.add_argument("--no-rerank", action="store_true", help="只用 qkb 排序")
-    a = ap.parse_args()
+def search(query, count=30, no_rerank=False):
+    config = load_config()
+    candidates = filter_candidates(qkb_search(query, count), vault_path(config))
+    if not candidates:
+        return [], "NO_AUTHORIZED_MATCH"
+    if not no_rerank:
+        try:
+            return rerank(query, candidates, config), "RERANKED"
+        except Exception:
+            print("[WARN] Reranking unavailable; using QKB order", file=sys.stderr)
+    return [(float(c.get("score", 0)), c) for c in candidates], "QKB_FALLBACK"
 
-    cands = qkb_search(a.query, a.n)
-    if not cands:
-        print("(无结果)")
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("query")
+    parser.add_argument("-k", type=int, default=5)
+    parser.add_argument("-n", type=int, default=30)
+    parser.add_argument("--files", action="store_true")
+    parser.add_argument("--no-rerank", action="store_true")
+    args = parser.parse_args()
+    if not args.query.strip() or len(args.query) > 8000 or not 1 <= args.k <= args.n <= 200:
+        parser.error("Nonempty query (<=8000 chars) and 1 <= k <= n <= 200 required")
+    ranked, status = search(args.query, args.n, args.no_rerank)
+    if not ranked:
+        print("本次检索未找到授权范围内的匹配；不代表资料不存在。")
         return 0
-
-    fallback = False
-    if a.no_rerank:
-        fallback = True
-    else:
-        try:
-            docs = [(c.get("matched_text") or c.get("title") or "") for c in cands]
-            rs = rerank(a.query, docs)
-            order = sorted(rs, key=lambda x: x["relevance_score"], reverse=True)
-            ranked = [(r["relevance_score"], cands[r["index"]]) for r in order]
-        except Exception as e:  # noqa: BLE001
-            sys.stderr.write(f"⚠ reranker 不可用（{e}）→ 回退 qkb 排序\n")
-            fallback = True
-    if fallback:
-        ranked = [(c.get("score", 0.0), c) for c in cands]
-
-    for i, (s, c) in enumerate(ranked[:a.k], 1):
-        fp = c.get("file_path", "")
-        if a.files:
-            print(f"{i}\t{s:.4f}\t{fp}")
-        else:
-            print(f"{i}. [{s:+.3f}] {c.get('title','')} — {fp}")
-
-    # ★ 整理页保底：全量聊天入库后，原文证据常在重排中胜出（合理），
-    #   但 wiki 整理页（口径/结论）不能被挤出视野 —— top-k 里没有就补一条。
-    def is_curated(c):
-        fp = c.get("file_path", "")
-        return fp.startswith("wiki/") and "/journal/" not in fp and "/monthly/" not in fp
-    if not a.files and ranked:
-        top = ranked[:a.k]
-        if not any(is_curated(c) for _, c in top):
-            cur = next(((s, c) for s, c in ranked if is_curated(c)), None)
-            if cur:
-                s, c = cur
-                print(f"   📌 整理页 [{s:+.3f}] {c.get('title','')} — {c.get('file_path','')}")
-
-    # 里程表：真实调用量化（谁在用、查什么、命中什么）
-    try:
-        top1 = ranked[0][1].get("file_path", "") if ranked else ""
-        with open(os.path.expanduser("~/.config/qkb/usage.log"), "a", encoding="utf-8") as uf:
-            uf.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{a.query}\trr={0 if fallback else 1}\ttop1={top1}\n")
-    except Exception:
-        pass
+    top = ranked[:args.k]
+    if not args.files:
+        curated = lambda c: str(c.get("file_path", "")).startswith("wiki/") and "/journal/" not in c["file_path"]
+        if not any(curated(c) for _, c in top):
+            extra = next(((score, c) for score, c in ranked[args.k:] if curated(c)), None)
+            if extra:
+                top.append(extra)
+    for number, (score, candidate) in enumerate(top, 1):
+        path = candidate["file_path"].replace("\n", " ").replace("\r", " ")
+        title = str(candidate.get("title", "")).replace("\n", " ").replace("\r", " ")
+        print(f"{number}\t{score:.4f}\t{path}" if args.files else f"{number}. [{score:+.3f}] {title} — {path}")
+    # Deliberately no usage.log containing queries or hit paths.
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as error:
+        print("[ERR] Retrieval failed: " + type(error).__name__, file=sys.stderr)
+        raise SystemExit(1)

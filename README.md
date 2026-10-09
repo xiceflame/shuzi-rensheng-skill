@@ -1,5 +1,9 @@
 # 数字人生 · 可分发安装包
 
+> **安全修复版：部署前先读 [升级与兼容性说明](references/review-fixes.md)。** 本版收紧 API 文件权限、保留冲突来源、传播失败回执，并将查询与安装分流。定时任务必须明确选装并启用配置；`auto` 不再自动选择外部 CLI，旧 Ollama 整理适配器暂不支持，原生 Windows 全链路未验收。下文为架构概览，具体支持范围与执行行为以该说明、当前 SKILL 和 SETUP 为准。
+>
+> 离线回归：`python3 -m unittest discover -s tests -v`。已有部署副本不会随 git 更新自动覆盖；本批未操作用户真实知识库或注册系统服务。
+
 > 一套「**采集 → AI agent 自动整理 → 语义检索 → Obsidian 浏览**」的个人知识库系统。
 > **不绑任何 agent 框架**：有 OpenClaw 用 OpenClaw，有 Claude Code 用 Claude Code，
 > 有 Hermes 用 Hermes（SKILL.md 开放标准，同源格式），只有 API key 也行，

@@ -1,90 +1,54 @@
 #!/usr/bin/env node
-/**
- * vault-search-rerank — MCP 版「数字人生」检索：qkb 召回 + 4090 reranker 重排。
- *
- * 与 `qkb mcp`（纯检索）并列，供 OpenClaw agents / Claude Code 调用。
- * 复用随 qkb 一起安装的 @modelcontextprotocol/sdk（绝对路径 import，免依赖安装）。
- *
- * 工具：vault_search({ query, k?, candidates? }) → 文本结果（Top-k）。
- * reranker 不可用时自动回退 qkb 排序。
- */
-import { spawn } from "node:child_process";
+/** MCP transport delegates ALL retrieval to vaultq.py, including privacy gates. */
+import { execFile, execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const SDK = "/opt/homebrew/lib/node_modules/@miguelarios/qkb/node_modules/@modelcontextprotocol/sdk/dist/esm";
-const { Server } = await import(`${SDK}/server/index.js`);
-const { StdioServerTransport } = await import(`${SDK}/server/stdio.js`);
-const { ListToolsRequestSchema, CallToolRequestSchema } = await import(`${SDK}/types.js`);
-
-const QKB = process.env.QKB_BIN || "/opt/homebrew/bin/qkb";
-const RERANK_URL = process.env.RERANK_URL || "http://127.0.0.1:8081/rerank";
-
-function qkbQuery(query, n) {
-  return new Promise((resolve) => {
-    const p = spawn(QKB, ["query", query, "--limit", String(n), "--json"]);
-    let out = "";
-    p.stdout.on("data", (d) => (out += d));
-    p.on("close", () => {
-      const i = out.indexOf("[");
-      if (i < 0) return resolve([]);
-      try { resolve(JSON.parse(out.slice(i))); } catch { resolve([]); }
-    });
-  });
-}
-
-async function rerank(query, docs) {
-  const r = await fetch(RERANK_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query, documents: docs }),
-    signal: AbortSignal.timeout(60000),
-  });
-  if (!r.ok) throw new Error(`rerank HTTP ${r.status}`);
-  return (await r.json()).results;
-}
-
-async function search(query, k, candidates) {
-  const cands = await qkbQuery(query, candidates);
-  if (!cands.length) return "（无结果）";
-  let ranked = cands.map((c) => ({ score: c.score ?? 0, c, reranked: false }));
-  try {
-    const rs = await rerank(query, cands.map((c) => c.matched_text || c.title || ""));
-    ranked = rs.sort((a, b) => b.relevance_score - a.relevance_score)
-               .map((r) => ({ score: r.relevance_score, c: cands[r.index], reranked: true }));
-  } catch { /* 回退 qkb 排序 */ }
-  return ranked.slice(0, k).map((r, i) =>
-    `${i + 1}. [${r.reranked ? r.score.toFixed(3) : "qkb " + r.score}] ${r.c.title} — ${r.c.file_path}`
-  ).join("\n");
-}
-
-const server = new Server(
-  { name: "vault-search-rerank", version: "0.1.0" },
-  { capabilities: { tools: {} } }
+const here = path.dirname(fileURLToPath(import.meta.url));
+const sdk = process.env.MCP_SDK_DIR || path.join(
+  execFileSync("npm", ["root", "-g"], { encoding: "utf8", timeout: 10000 }).trim(),
+  "@miguelarios/qkb/node_modules/@modelcontextprotocol/sdk/dist/esm"
 );
+const { Server } = await import(pathToFileURL(path.join(sdk, "server/index.js")).href);
+const { StdioServerTransport } = await import(pathToFileURL(path.join(sdk, "server/stdio.js")).href);
+const { ListToolsRequestSchema, CallToolRequestSchema } = await import(pathToFileURL(path.join(sdk, "types.js")).href);
 
+function search(query, k, candidates) {
+  if (typeof query !== "string" || !query.trim() || query.length > 8000 ||
+      !Number.isInteger(k) || !Number.isInteger(candidates) || k < 1 || candidates < k || candidates > 200) {
+    throw new Error("Expected nonempty query and 1 <= k <= candidates <= 200");
+  }
+  return new Promise((resolve, reject) => {
+    execFile(process.env.SHUZI_PYTHON || "python3",
+      [path.join(here, "vaultq.py"), "-k", String(k), "-n", String(candidates), "--", query],
+      { timeout: 130000, maxBuffer: 1024 * 1024 },
+      (error, stdout) => error ? reject(new Error("Retrieval failed; check local service health")) : resolve(stdout.trim()));
+  });
+}
+
+const server = new Server({ name: "vault-search-rerank", version: "0.2.0" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [{
     name: "vault_search",
-    description: "检索「数字人生」知识库（qkb 混合召回 + 4090 bge-reranker 重排）。适合关系型/概念型问题，如『张三和我的关系』。",
+    description: "检索授权范围内的知识库；排除 private、隐藏路径与符号链接。空结果不等于资料不存在。",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "检索问题（自然语言或关键词）" },
-        k: { type: "integer", description: "返回条数，默认 5" },
-        candidates: { type: "integer", description: "初筛候选数，默认 30" },
+        query: { type: "string", minLength: 1, maxLength: 8000 },
+        k: { type: "integer", minimum: 1, maximum: 200 },
+        candidates: { type: "integer", minimum: 1, maximum: 200 },
       },
-      required: ["query"],
+      required: ["query"], additionalProperties: false,
     },
   }],
 }));
-
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const { query, k = 5, candidates = 30 } = req.params.arguments ?? {};
   try {
-    const text = await search(String(query), Number(k), Number(candidates));
-    return { content: [{ type: "text", text }] };
-  } catch (e) {
-    return { content: [{ type: "text", text: `检索失败：${e}` }], isError: true };
+    if (req.params.name !== "vault_search") throw new Error("Unknown tool");
+    const { query, k = 5, candidates = 30 } = req.params.arguments ?? {};
+    return { content: [{ type: "text", text: await search(query, k, candidates) }] };
+  } catch (error) {
+    return { content: [{ type: "text", text: String(error.message) }], isError: true };
   }
 });
-
 await server.connect(new StdioServerTransport());

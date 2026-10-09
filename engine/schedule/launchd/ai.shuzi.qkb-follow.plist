@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 近实时跟进：每 5 分钟增量 ingest+embed（脚本内部循环）。
+     安装前把 __HOME__ 换成绝对家目录（launchd 不展开 ~ / $HOME）。 -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.shuzi.qkb-follow</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>__HOME__/.config/qkb/qkb-follow.py</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>__LOGDIR__/qkb-follow.log</string>
+  <key>StandardErrorPath</key><string>__LOGDIR__/qkb-follow.err.log</string>
+  <key>ProcessType</key><string>Background</string>
+</dict>
+</plist>

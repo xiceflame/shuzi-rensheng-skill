@@ -1,0 +1,73 @@
+{
+  "_说明": "数字人生 · 集中配置。所有 API / 通知 / 路径都在这一个文件。复制到 ~/.shuzi-rensheng/config.json 后按需修改。",
+  "vault": "~/数字人生",
+  "_api说明": "三类 API 可选。全部走 OpenAI 兼容协议（不绑定厂商）。不用 API 就留空。",
+  "api": {
+    "llm": {
+      "_用途": "整理任务（提炼 wiki 页）。engine/run.sh 的 api 适配器用它。",
+      "enabled": false,
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "model": "deepseek-chat",
+      "max_tokens": 8192,
+      "_推荐": "DeepSeek V4.1 Flash（中文强、有峰谷价、便宜）；任何 OpenAI 兼容端点都行"
+    },
+    "embedding": {
+      "_用途": "向量嵌入（检索质量的决定因素）。qkb 的 provider=openai 用它。",
+      "_注意": "dimension 必须与服务商实际维度一致，否则检索错乱。",
+      "enabled": false,
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "model": "text-embedding-3-small",
+      "dimension": 1536
+    },
+    "vlm": {
+      "_用途": "看图（打勾表 / 日程表 / 截图）。整理任务里读取图片时用。",
+      "enabled": false,
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "model": "gpt-4o",
+      "max_tokens": 4096,
+      "_说明": "看图（打勾表/日程表/截图）。大 VLM 本地跑不动，必须走 API。"
+    }
+  },
+  "_本地模型说明": "若不想用 API，可全走本地 Ollama。两者可混用（如：嵌入本地、LLM 用 API）。",
+  "local": {
+    "ollama_host": "http://127.0.0.1:11434",
+    "embedding_model": "qwen3-embedding:4b",
+    "embedding_dimension": 2560,
+    "transcribe_model": "whisper",
+    "transcribe_backend": "local",
+    "_性能分级": "由 setup/detect.sh 的 gpu_tier 判定；详见 references/performance-tiering.md"
+  },
+  "_采集说明": "采集端平台。windows 免权限；macos 需 FDA+中继；none = 不接微信，只用手工投喂。",
+  "collector": {
+    "platform": "none",
+    "data_dir": "",
+    "focus_file": "~/.wxexport/focus.txt",
+    "export_dir": "~/wechat-export"
+  },
+  "_组网说明": "single=单机（采集与大脑同一台机器，跨机推送自动跳过）；multi=多机（采集机/大脑/GPU 分离，需先组网，见 references/network-setup.md）。host 填 Tailscale MagicDNS 名（推荐，如 macmini.tail1234.ts.net）或 100.x IP，可带 user@ 前缀；留空=未配置。",
+  "network": {
+    "topology": "single",
+    "brain": { "host": "", "dir": "wechat-export" },
+    "gpu": { "host": "", "rerank_url": "" }
+  },
+  "_通知说明": "提醒渠道（agent 触发）。可选 feishu / wecom / wechat-connector / desktop / discord / log。",
+  "notify": {
+    "channel": "log",
+    "feishu_webhook_env": "FEISHU_WEBHOOK",
+    "wecom_webhook_env": "WECOM_WEBHOOK"
+  },
+  "_定时说明": "由系统原生 launchd / cron 调用 engine/run.sh，不依赖任何 agent 框架。",
+  "schedule": {
+    "enabled": false,
+    "chat_ingest": "7 8,21 * * *",
+    "finance_ingest": "40 */4 * * *",
+    "rebuild": "10 */4 * * *",
+    "transcribe": "20 */4 * * *",
+    "rollup": "7 9 1 * *",
+    "lint": "7 21 * * 0",
+    "idea_review": "7 10 * * 1"
+  }
+}

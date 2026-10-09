@@ -1,0 +1,14 @@
+# 数字人生 · 检索库 qkb 配置模板 → 复制为 ~/.config/qkb/config.toml 并按需修改
+[vault]
+path = "~/数字人生"          # 换成你的 vault 路径
+name = "数字人生"
+
+# ── 嵌入模型 ──────────────────────────────────────────────
+# 本方案默认：本地/远程跑 Ollama + 一个嵌入模型（示例用 Qwen3-Embedding-4B，2560 维）。
+# 有 GPU 的机器可把算力放上去，用 Tailscale/局域网直连；本机再跑 embed-proxy 做高可用兜底。
+# ⚠️ 换模型后必须 `qkb embed --full`（qkb 按新维重建 chunks_vec）。
+[embedding]
+provider    = "ollama"
+model       = "qwen3-embedding:4b"     # 换成你装的模型 tag
+dimension   = 2560                      # 与模型一致
+ollama_host = "http://127.0.0.1:11434"  # 远程算力则填其地址；或用 embed-proxy 地址

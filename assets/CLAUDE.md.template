@@ -1,0 +1,127 @@
+# CLAUDE.md — 本库的工作规范（"宪法"）
+
+> 知识库：**{{库名，如「数字人生」}}** ｜ 大脑 `{{大脑路径，如 ~/数字人生}}` ⇄ 采集端 `{{采集端路径}}`
+> 维护者：**{{owner agent，如 daily-owner}}** ｜ 建库：{{建库日期}}
+>
+> ⚠️ **这不是代码库，是 Obsidian 知识库（vault）**。没有 build/test/lint 脚本；
+> 「开发」＝按下面八个工作流**整理 Markdown 页 + 重建检索索引**。
+> 若目录里**无 `.git`**：不要跑 `git` 命令；两机同步靠 **Syncthing**。
+
+---
+
+## 一、目录结构与职责
+
+```
+{{库名}}/
+├── README.md          ← 工程总览（先读）
+├── CLAUDE.md          ← 本文件：完整工作流规范
+├── raw/               ← 原始素材区（**只读，agent 绝不修改**）
+│   ├── chatlogs/      ← 历史聊天证据（<会话>/<YYYY-MM>.md，可点回原话）
+│   ├── media/         ← 项目/事项素材（合同/方案/发票/关键截图；只新增复制）
+│   └── docs/ voice/ screenshots/ clips/ misc/
+├── wiki/              ← **agent 维护的结构化 Markdown（只留整理层）**
+│   ├── index.md       ← 全局索引（**每次操作先读它**）· log.md 操作日志
+│   ├── journal/       ← 「我的每一天」（YYYY-MM-DD，时间主轴）
+│   ├── people/        ← 个人文档（人物轴：时间线＝事件+意义）
+│   ├── projects/ tasks/ concepts/ finance/ ideas/ sources/ entities/ outputs/ private/
+│   └── monthly/ quarterly/  ← 月/季汇总（检索先命中汇总）
+└── templates/         ← 模板
+```
+
+---
+
+## 二、八个工作流
+
+### 1. chat-ingest —— 处理聊天原始记录
+- **触发**：定时（每 4h / 同步完成）；或用户要求
+- **输入**：`raw/` 下最新采集（文字 / 语音转写 / 图片 / 文件 / 视频 / 财务）
+- **核心动作**：
+  1. 先读 `wiki/index.md`
+  2. **chatlog 就地自带媒体**：把 `[图片]` 内联为 `![[文件名]]`、`[语音]` 内联为 `> 语音：“摘录”（附时间）`；正文不改
+  3. 提炼 **决定 / 待办 / 重要信息**，并写清每件事的**意义**与归属
+  4. **写「我的每一天」**：`wiki/journal/YYYY-MM-DD.md`，按 人/项目 分组
+  5. **事件三层路由**：① 能认出 → 链已有项目页；② 无对应 → 归「个人/商业」待收纳；③ 搁置事项 → `wiki/tasks/<slug>.md`
+  6. **更新人物页时间线**（事件+意义）
+  7. 有价值的素材复制到 `raw/media/<项目>/`
+  8. 更新 `index.md` + `log.md`；跑 `qkb ingest && qkb embed`（经锁）
+
+### 2. ai-chat-ingest —— 处理 Claude / ChatGPT 导出
+- 放入 `raw/chat/claude|chatgpt` → 写 `wiki/sources/<日期>-<主题>.md` → 提炼可复用 prompt/方法进 `concepts/`
+
+### 3. idea-capture —— 新想法
+- 建 `wiki/ideas/<slug>.md`，状态 **`seed`**；`seed` 不进全局索引；登记 [[想法索引]]
+
+### 4. idea-review —— 定期复盘想法
+- 每周一次；遍历 seed/growing，建议 合并/升级/归档；超 30 天未更新的单列
+
+### 5. journal-ingest —— 「我的每一天」
+- 写 `wiki/journal/YYYY-MM-DD.md`；按 人/项目 分组，每条写「谁 + 事件 + 意义 + [[链接]]」
+- 语音放摘录、图片内嵌；**允许 AI 汇总**（非「原汁原味」）
+
+### 6. query —— 查询
+- 先查 `index.md` → `vaultq`/`qkb query` → 重要答案存 `wiki/outputs/`
+
+### 7. people-update —— 发现人物信息
+- 建/更新 `wiki/people/<姓名>.md`：时间线（事件+意义）+ 关系统览 + 记录目录；登记 [[人物索引]]
+
+### 8. lint —— 维护
+- 每周一次；查 孤立页 / 断链 / 陈旧 seed / 索引一致性 / raw 只读 / frontmatter 合规；出体检报告
+
+---
+
+## 三、硬约束（**见 references/safety.md**）
+
+1. **`raw/` 只读**；**不删除**，过期只归档
+2. **禁止 `rmtree`/删目录后重建**；只覆盖/只新增；要删逐个删
+3. **frontmatter 必须含 `id` + `context` + `created`**（否则检索不索引；id 唯一）
+4. **写入边界**：`journal/`+`people/` 由 owner 独占写；其他 agent 只写自己领域页
+5. **写操作串行**：检索库 `ingest/embed` 经锁包装器
+6. **引用** `[[slug]]` 内链；chatlog 用路径式 `[[raw/chatlogs/<会话>/<YYYY-MM>|YYYY-MM]]`
+7. **四类区分**：事实 / 计划（未落实）/ 意义（解读）/ 待确认
+8. **人名带别名**、跨会话推断；**发言人未标注不臆测**
+9. **双维护**：改完更新 `index.md` + `log.md`
+10. **唯一索引**；前身/别名并入所属项目页，不独立成项
+
+---
+
+## 四、信息时效性（**最重要**）
+
+**真值以「最新的聊天进展 + PDF/PPT/图片」为准**：
+近 3 个月聊天/语音 > 群里的 PDF/PPT/图片 > 更早聊天 > 老库迁入（仅作历史）。
+**超过 3 个月且无后续更新的信息，不得当作「当前状态」。**
+
+---
+
+## 五、业务上下文（**填你自己的**）
+
+> ⬇️ 以下是**占位示例**，请替换为你自己的层级与规则。agent 判断归属时以此为准。
+
+### 层级结构
+```
+【{{大类A，如 公司}}】
+   ├─ {{项目1}}（前身：{{前身}}——同一项目，不拆分）
+   ├─ {{项目2}}
+   └─ 支撑：{{财务/合作…}} · 团队：{{成员…}}
+【{{大类B，如 主业}}】
+【{{大类C，如 个人}}】（{{跨类人物}} 按内容判断归属）
+```
+
+### 关键规则（示例）
+- {{规则1，如 打勾表规则}}
+- {{规则2，如 单价/去重口径}}
+- {{财务铁律：佐证≠依据；权威依据是官方账单。账本=raw/bills/ 官方账单→ledger/ 复式分录（beancount，见技能 references/finance-integration.md）；聊天转账/红包只作注释层，永不直接变成账本数字}}
+
+---
+
+## 六、操作与运维
+
+```bash
+vaultq "<问题>"                                   # 两阶段检索（推荐）
+qkb query "<问题>"                                # 单阶段混合
+python3 ~/.config/qkb/qkb-lock.py ingest          # 改完 wiki 后重建（顺序不可颠倒）
+python3 ~/.config/qkb/qkb-lock.py embed
+node ~/.config/qkb/prune-stale.mjs                # 清陈旧索引
+```
+
+- 检索配置：`~/.config/qkb/config.toml`；改完 wiki **必须重建索引**，否则查不到。
+- **只有 frontmatter 含 `id`+`context`+`created` 的页会被索引**。

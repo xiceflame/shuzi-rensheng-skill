@@ -1,5 +1,7 @@
 # 数字人生（shuzi-rensheng）· 你的私人记忆库
 
+> **业务主线与本次改进**：[微信获取 → 条件记忆 → Obsidian 管理](references/wechat-memory-obsidian.md)。保留现有授权采集与解密路线，新增可核验的恢复报告、稳定消息事件和导出筛选。Obsidian 管理视图为样板，完整 Agent 条件查询与用户属性回读仍是待实施项目，不把展示字段当成已经生效的权限控制。
+
 [![Release](https://img.shields.io/badge/release-v0.1.0-blue.svg)](https://github.com/xiceflame/shuzi-rensheng-skill/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/core-macOS%20%7C%20Linux-lightgrey.svg)](#上手需要什么)

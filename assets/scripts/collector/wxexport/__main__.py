@@ -54,6 +54,8 @@ def cmd_decrypt(args):
     p = _paths(args)
     ok, fail = decrypt.run(p["data"], p["keys"], p["decrypted"])
     print("decrypted %d databases (%d failed) -> %s" % (ok, fail, p["decrypted"]))
+    if fail or not ok:
+        raise SystemExit(1)  # Do not export stale/partial plaintext as a complete run.
 
 
 def cmd_export(args):

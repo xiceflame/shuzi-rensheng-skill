@@ -108,7 +108,10 @@ mkdir -p "$WORK"
       echo "微信未运行，跳过密钥补齐"
     fi
   fi
-  "$PY" -m wxexport decrypt 2>&1 | grep -E '^decrypted' || true
+  if ! "$PY" -m wxexport decrypt; then
+    echo "[ERR] 恢复不完整；保留上次导出，停止本轮处理与推送（见 recovery-manifest.json）"
+    exit 1
+  fi
 
   # ② 关注会话文字
   "$PY" export_focus.py "$DAYS" 2>&1 | tail -2
@@ -121,7 +124,10 @@ mkdir -p "$WORK"
   "$PY" decode_focus_images.py "$DAYS" 400 2>&1 | tail -2
 
   # ④c 可检索聊天记录（近三年，切成带 frontmatter 的月度 md）
-  "$PY" export_searchable.py 3 2>&1 | tail -2
+  if ! "$PY" export_searchable.py 3; then
+    echo "[ERR] 聊天标准化不完整；停止本轮推送（见 searchable/_export-report.json）"
+    exit 1
+  fi
 
   # ④b 财务：转账/红包/收款结构化提取
   "$PY" extract_money.py 2>&1 | tail -2

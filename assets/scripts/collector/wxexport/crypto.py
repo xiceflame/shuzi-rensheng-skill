@@ -43,10 +43,20 @@ def find_reserve(key, page1):
 
 def decrypt_db(data, key, reserve=DEFAULT_RESERVE):
     """Decrypt a whole SQLCipher database blob to a plaintext SQLite blob."""
+    if len(key) != 32 or reserve != DEFAULT_RESERVE:
+        raise ValueError("UNSUPPORTED_CIPHER_PROFILE: expected WCDB4 raw-key/4096/80")
+    if not data or len(data) % PAGE:
+        raise ValueError("TRUNCATED_DATABASE: incomplete cipher page")
     n = len(data) // PAGE
+    mk = mac_key(key, data[:16])
     out = bytearray()
     for i in range(n):
         page = data[i * PAGE:(i + 1) * PAGE]
+        start = 16 if i == 0 else 0
+        authenticated = page[start:PAGE - reserve + 16] + struct.pack("<I", i + 1)
+        expected = hmac.new(mk, authenticated, hashlib.sha512).digest()
+        if not hmac.compare_digest(expected, page[PAGE - reserve + 16:]):
+            raise ValueError("PAGE_AUTH_FAILED: page %d" % (i + 1))
         iv = page[PAGE - reserve:PAGE - reserve + 16]
         if i == 0:
             body = AES.new(key, AES.MODE_CBC, iv).decrypt(page[16:PAGE - reserve])

@@ -1,0 +1,50 @@
+filters:
+  and:
+    - 'file.inFolder("wiki/memory-controls")'
+properties:
+  category:
+    displayName: 分类
+  project:
+    displayName: 项目
+  review_status:
+    displayName: 审核状态
+  agent_use:
+    displayName: Agent 使用意图
+  privacy:
+    displayName: 隐私意图
+  source_page:
+    displayName: 原始来源
+views:
+  - type: table
+    name: 全部资料
+    order:
+      - file.name
+      - category
+      - project
+      - review_status
+      - agent_use
+      - privacy
+      - source_page
+  - type: table
+    name: 待分类与确认
+    filters:
+      or:
+        - 'category == "待分类"'
+        - 'review_status == "pending"'
+    order:
+      - file.name
+      - category
+      - project
+      - review_status
+      - source_page
+  - type: table
+    name: 排除与归档意图
+    filters:
+      or:
+        - 'agent_use == "excluded"'
+        - 'review_status == "archived"'
+    order:
+      - file.name
+      - agent_use
+      - review_status
+      - source_page

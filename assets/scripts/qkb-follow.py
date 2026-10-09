@@ -1,104 +1,102 @@
 #!/usr/bin/env python3
-"""近实时跟进：vault 有新增/改动 → 增量 ingest + embed。
+"""Content-hash index follower. Checkpoint only after successful ingest/embed/status.
 
-背景：qkb 的索引原本靠「每 4h 的 rebuild-index + 每日两次摘要」批量更新，
-新写的日志/日记最长要等 ~4 小时才可语义检索。本守护兜底：
-
-  1) 门闸：wiki / raw/chat-full / raw/attachments 下有比上次运行更新的 .md 才继续
-     （否则 qkb ingest 要全量扫描 5.5k+ 文件、耗时 10 分钟以上，空转不划算）
-  2) `qkb ingest`（增量）
-  3) 若有 pending → `qkb embed`（默认本机；积压 >BIG 自动切 4090）
-  4) 若「大作业」(qkb-bigjob) 正在跑 → 本轮跳过（避免抢锁/误清 prefer-4090 标记）
-
-全部经 `qkb-lock.py` 串行化。由 launchd `com.<user>.qkb-follow`（KeepAlive）常驻。
+Uses the same code path for --once and the daemon. A snapshot taken BEFORE the
+run is committed, so content arriving during indexing is picked up next time.
 """
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
 import os
+from pathlib import Path
 import re
-import subprocess
 import sys
 import time
 
-QKB = "/opt/homebrew/bin/qkb"
-LOCK = os.path.expanduser("~/.config/qkb/qkb-lock.py")
-MARK = os.path.expanduser("~/.config/qkb/prefer-4090")
-LAST = os.path.expanduser("~/.config/qkb/.follow-last-run")
-VAULT = os.path.expanduser("~/数字人生")
-WATCH = [os.path.join(VAULT, "wiki"),
-         os.path.join(VAULT, "raw", "chat-full"),
-         os.path.join(VAULT, "raw", "attachments")]
-INTERVAL = int(os.environ.get("FOLLOW_INTERVAL", "300"))
-BIG = int(os.environ.get("FOLLOW_BIG", "200"))
+from shuzi_runtime import atomic_json, checked_run, command, file_lock, qkb_dir, vault_path
 
 
-def log(s: str):
-    print(time.strftime("%Y-%m-%d %H:%M:%S ") + s, flush=True)
+def snapshot(vault):
+    if not vault.is_dir():
+        raise FileNotFoundError("Vault does not exist")
+    result = {}
+    for subtree in ("wiki", "raw/chat-full", "raw/attachments", "raw/chatlogs", "raw/docs-indexed"):
+        base = vault / subtree
+        if not base.exists():
+            continue
+        if base.is_symlink():
+            raise ValueError("Watched roots must not be symlinks")
+        for root, dirs, files in os.walk(base, followlinks=False):
+            dirs[:] = sorted(d for d in dirs if not d.startswith(".") and not (Path(root) / d).is_symlink())
+            for name in sorted(files):
+                path = Path(root) / name
+                if not name.endswith(".md") or ".sync-conflict-" in name or path.is_symlink():
+                    continue
+                result[str(path.relative_to(vault))] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
 
 
-def bigjob_running() -> bool:
-    r = subprocess.run(["pgrep", "-f", "qkb-bigjob"], capture_output=True)
-    return r.returncode == 0
+def pending(qkb, run=checked_run):
+    output = run([qkb, "status"], timeout=300).stdout
+    match = re.search(r"\((\d+) pending\)", output)
+    if not match:
+        raise ValueError("Unrecognized qkb status; refusing to mark indexing complete")
+    return int(match.group(1))
 
 
-def something_new() -> bool:
-    """自上次成功运行后，被索引目录里有没有更新的 .md？"""
-    if not os.path.exists(LAST):
-        return True
-    cmd = ["find", *WATCH, "-name", "*.md", "-newer", LAST, "-print", "-quit"]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    return bool(r.stdout.strip())
+def follow_once(run=checked_run):
+    vault = vault_path()
+    directory = qkb_dir()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    qkb = command("qkb", "QKB_BIN")
+    state = directory / "follow-state-v2.json"
+    identity = {"vault": str(vault), "qkb": qkb}
+    # Include the index configuration so changing the model/vault forces ingest.
+    config = directory / "config.toml"
+    identity["config_sha256"] = hashlib.sha256(config.read_bytes()).hexdigest() if config.exists() else ""
+    with file_lock(directory / ".follow.lock", blocking=False):
+        start = snapshot(vault)
+        previous = json.loads(state.read_text(encoding="utf-8")) if state.exists() else {}
+        if previous.get("identity") == identity and previous.get("files") == start:
+            # Pending chunks may also be created by other authorized producers.
+            if pending(qkb, run) == 0:
+                return "NO_CHANGE"
+        lock = Path(__file__).with_name("qkb-lock.py")
+        run([sys.executable, str(lock), "ingest"], timeout=3600)
+        count = pending(qkb, run)
+        if count:
+            run([sys.executable, str(lock), "embed"], timeout=14400)
+        if pending(qkb, run) != 0:
+            raise RuntimeError("Embedding still pending; checkpoint not advanced")
+        atomic_json(state, {"version": 2, "identity": identity, "files": start, "completed_at": time.time()})
+        return "INDEXED"
 
 
-def touch_last():
-    try:
-        open(LAST, "a").close()
-    except Exception:
-        pass
-
-
-def proceed() -> list:
-    did = []
-    subprocess.run(["/usr/bin/python3", LOCK, "ingest"],
-                   capture_output=True, text=True, timeout=3600)
-    p = subprocess.run([QKB, "status"], capture_output=True, text=True, timeout=300)
-    m = re.search(r"\((\d+) pending\)", p.stdout)
-    n = int(m.group(1)) if m else 0
-    if n:
-        created = n >= BIG
-        created_by_us = False
-        if created and not os.path.exists(MARK):
-            open(MARK, "w").close()
-            created_by_us = True
-        try:
-            subprocess.run(["/usr/bin/python3", LOCK, "embed"],
-                           capture_output=True, text=True, timeout=14400)
-            did.append(f"嵌入 {n} chunk(s){' @4090' if created else ' @本机'}")
-        finally:
-            if created_by_us and os.path.exists(MARK):
-                os.remove(MARK)
-    return did
-
-
-def main() -> int:
-    if "--once" in sys.argv:
-        did = proceed()
-        log("跟进：" + (" | ".join(did) if did else "无变化"))
-        return 0
-    log(f"follow daemon start (interval={INTERVAL}s, big={BIG})")
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--once", action="store_true")
+    args = parser.parse_args()
+    interval = int(os.environ.get("FOLLOW_INTERVAL", "300"))
+    if interval < 1:
+        parser.error("FOLLOW_INTERVAL must be positive")
     while True:
         try:
-            if bigjob_running():
-                log("大作业进行中，本轮跳过")
-            elif not something_new():
-                pass  # 无变化，静默
-            else:
-                did = proceed()
-                touch_last()
-                if did:
-                    log("跟进：" + " | ".join(did))
-        except Exception as e:  # noqa: BLE001
-            log(f"error: {e}")
-        time.sleep(INTERVAL)
+            status = follow_once()
+            if status != "NO_CHANGE":
+                print(status, flush=True)
+        except BlockingIOError:
+            if args.once:
+                return 75
+        except Exception as error:
+            print("[ERR] " + str(error), file=sys.stderr, flush=True)
+            if args.once:
+                return 1
+        if args.once:
+            return 0
+        time.sleep(interval)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

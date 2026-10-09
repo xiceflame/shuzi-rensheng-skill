@@ -69,7 +69,7 @@ fi
 
 echo
 echo " ③ 知识库骨架"
-VAULT="${SHUZI_VAULT:-$HOME/数字人生}"
+VAULT="$("${SHUZI_PYTHON:-python3}" "$PKG/assets/scripts/shuzi_runtime.py" vault)" || exit 1
 if [ -f "$VAULT/CLAUDE.md" ]; then
   echo "    已存在：${VAULT}（跳过）"
 else
@@ -80,19 +80,29 @@ fi
 
 echo
 echo " ④ 集中配置"
-CFG="$HOME/.shuzi-rensheng/config.json"
+CFG="${SHUZI_CONFIG:-$HOME/.shuzi-rensheng/config.json}"
 mkdir -p "$(dirname "$CFG")"
 if [ -f "$CFG" ]; then
   echo "    已存在：${CFG}（跳过）"
 else
-  cp "$PKG/assets/config.json" "$CFG" && echo "    ✓ 已生成 ${CFG}（按需编辑 api / notify 段）"
+  "${SHUZI_PYTHON:-python3}" - "$PKG/assets/config.json" "$CFG" "$VAULT" <<'PY' || exit 1
+import json, os, sys
+from pathlib import Path
+source, target, vault = sys.argv[1:]
+config = json.loads(Path(source).read_text(encoding="utf-8"))
+config["vault"] = str(Path(vault).expanduser().resolve())
+fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as stream:
+    json.dump(config, stream, ensure_ascii=False, indent=2)
+PY
+  echo "    ✓ 已生成 ${CFG}（vault 与安装选择一致）"
 fi
 
 echo
 echo " ⑤ 部署检索侧脚本到 ~/.config/qkb/"
 QKB_DIR="$HOME/.config/qkb"
 mkdir -p "$QKB_DIR"
-for f in qkb-lock.py qkb-follow.py vaultq.py prune-stale.mjs \
+for f in shuzi_runtime.py qkb-lock.py qkb-follow.py vaultq.py prune-stale.mjs \
          vault-search-mcp.mjs embed-proxy.py compute-health.py qkb-bigjob; do
   [ -f "$PKG/assets/scripts/$f" ] || continue
   if [ -f "$QKB_DIR/$f" ]; then
@@ -108,7 +118,8 @@ echo " ⑥ 定时任务（可选——让系统自动跑）"
 if [ -t 0 ]; then
   read -r -p "    现在选装定时任务吗？（整理/转写/体检/月汇总等，可多选）[y/N]: " yn
   case "$yn" in
-    [yY]*) bash "$PKG/setup/schedule.sh" ;;
+    [yY]*) bash "$PKG/setup/schedule.sh" qkb-follow lint --dry-run
+           echo "    仅预览；启用 schedule.enabled 后，明确指定任务名注册。" ;;
     *)     echo "    跳过（以后随时：bash setup/schedule.sh）" ;;
   esac
 else

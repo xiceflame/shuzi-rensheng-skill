@@ -26,7 +26,9 @@ echo "════════════════════════�
 echo " 数字人生 · 安装器"
 echo "════════════════════════════════════════════"
 echo
-echo " ① 环境探测"
+echo " ① 安装实例身份"
+"${SHUZI_PYTHON:-python3}" "$PKG/setup/instance.py" --json
+echo " ② 环境探测"
 bash "$PKG/setup/detect.sh" 2>&1 | tail -8
 echo
 bash "$PKG/setup/detect-agent.sh" 2>/dev/null | head -6 || true

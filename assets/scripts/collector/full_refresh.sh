@@ -4,7 +4,8 @@
 set -uo pipefail
 PY=/usr/bin/python3
 WORK="$HOME/wx-export"
-TOOL="$HOME/wechat-export-macos/rmqg-export"
+# 工具目录：默认用包内自带 collector；WX_TOOL 可指回外部工具
+TOOL="${WX_TOOL:-$(cd "$(dirname "$0")" && pwd)}"
 LOG="$WORK/full_refresh.log"
 
 # ── 跨机推送目标：环境变量 > ~/.shuzi-rensheng/config.json 的 network 段 ──

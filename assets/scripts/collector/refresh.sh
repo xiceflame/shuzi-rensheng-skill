@@ -17,7 +17,8 @@ WX_ACCOUNT_DIR="${WX_ACCOUNT_DIR:-$(ls -d "$HOME/Library/Containers/com.tencent.
 SRC="${WX_ACCOUNT_DIR%/}"
 WORK="$HOME/wx-export"
 SNAP="$WORK/xwechat_files/$(basename "$SRC")"
-TOOL="$HOME/wechat-export-macos/rmqg-export"
+# 工具目录：默认用包内自带 collector（含 wxexport 模块与全部导出脚本）；WX_TOOL 可指回外部工具
+TOOL="${WX_TOOL:-$(cd "$(dirname "$0")" && pwd)}"
 LOG="$WORK/refresh.log"
 DAYS="${WX_FOCUS_DAYS:-30}"
 MEDIA_DAYS="${WX_MEDIA_DAYS:-45}"

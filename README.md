@@ -65,6 +65,16 @@ bash install.sh
 | **可选**：WX | 不接 WX 也能用，可先手工导入少量已授权资料 |
 | **可选**：QKB 与嵌入模型 | 用于语义检索，需独立配置与验收；未安装时可直接浏览 Markdown |
 
+## 出错时如何定位安装实例
+
+本版本加入了本地诊断与脱敏报告：
+
+- `python3 setup/instance.py --json` 查看实例 ID
+- `python3 engine/diagnostics.py --export ./report.json` 生成脱敏报告
+- 提交问题时只提供 report_id、instance_id、版本和错误码，不要上传聊天正文、原始数据库、Obsidian 正文或凭据
+
+自动上传默认关闭，离线导出优先。完整字段和隐私边界见 `references/diagnostics.md`。
+
 ## 快速开始（3 步）
 
 ```bash
